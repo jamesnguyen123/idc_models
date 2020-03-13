@@ -154,30 +154,30 @@ def make_federated_data(client_data, client_ids):
   ]
  
 
-def get_data(is_iid):
+def get_data(path_data, is_iid):
     if is_iid :
-        list_ds = tf.data.Dataset.list_files(path + '/data/balanced_IDC_30k/*/*', shuffle=True)  
+        list_ds = tf.data.Dataset.list_files(path_data + '/data/balanced_IDC_30k/*/*', shuffle=True)  
         return list_ds
     else:
-        list_ds_0 = tf.data.Dataset.list_files(path + '/data/balanced_IDC_30k/0/*', shuffle=True)  
-        list_ds_1 = tf.data.Dataset.list_files(path + '/data/balanced_IDC_30k/1/*', shuffle=True)  
+        list_ds_0 = tf.data.Dataset.list_files(path_data + '/data/balanced_IDC_30k/0/*', shuffle=True)  
+        list_ds_1 = tf.data.Dataset.list_files(path_data + '/data/balanced_IDC_30k/1/*', shuffle=True)  
         list_ds = list_ds_1.concatenate(list_ds_0)
         return list_ds
 
 
 def main():
-    path = sys.argv[1]
+    path_data = sys.argv[1]
     NUM_ROUNDS=sys.argv[2]
     is_iid = sys.argv[3]
-    list_ds = get_data(is_iid=="iid")
+    list_ds = get_data(path_data,is_iid=="iid")
     labeled_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    toTrain = not sys.path.exists(path_to_dataset+"/pretrained/cp.ckpt")
-    pretrained_model = pretrained(labeled_ds, path, train=toTrain)
+    toTrain = not sys.path.exists(path_data+"/pretrained/cp.ckpt")
+    pretrained_model = pretrained(labeled_ds, path_data, train=toTrain)
 
-   def create_tf_dataset_for_client_fnclient_id):
-     client_set = labeled_ds.skip(client_id*CLIENT_SIZE).take(CLIENT_SIZE)
-     return client_set   
+    def create_tf_dataset_for_client_fn(client_id):
+      client_set = labeled_ds.skip(client_id*CLIENT_SIZE).take(CLIENT_SIZE)
+      return client_set   
 
 
     # split into train and test client data
