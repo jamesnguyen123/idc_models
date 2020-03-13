@@ -71,13 +71,11 @@ class Timer(object):
         self.name, time.time() - self.t))
     
 weights_shape = [(3, 3, 3, 32),
-    (32,),
-    (3, 3, 32, 64),
-    (64,),
-    (7744, 128),
-    (128,),
-    (128, 1),
-    (1,)]
+(32,),
+(4608, 128),
+(128,),
+(128, 1),
+(1,)]
 def auroc(y_true, y_pred):
     return tf.compat.v1.py_func(roc_auc_score, (y_true, y_pred), tf.double)
 
@@ -86,7 +84,6 @@ def create_model():
     model.add(tf.keras.layers.Conv2D(32, kernel_size=(3, 3),
                       activation='relu',
                       input_shape=(50,50,3),strides=2))
-    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='relu'))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
     model.add(tf.keras.layers.Dropout(0.25))
     model.add(tf.keras.layers.Flatten())
@@ -120,6 +117,7 @@ class Client(object):
         arry_weights = np.array(x.get_weights())
         for i in range(arry_weights.shape[0]):
             #layer = arry_weights[i]
+            #print(layer.shape)
             arry_weights[i] = np.apply_along_axis(enc_vector,0,arry_weights[i])
             # print("orig", layer.shape)
             # layer = layer.flatten()
@@ -234,6 +232,7 @@ def main():
     test_data = prepare_for_training(labeled_ds.skip(TRAIN_SIZE).take(TEST_SIZE))
     print(len(list(client_data)))
     clients = create_clients(client_data, np.arange(NUM_CLIENTS),secure=="secure")
+    #clients[0].enc_model(clients[0].model)
     server = Server()
     with Timer("Secure fed model"):
         for i in np.arange(NUM_ROUNDS):
