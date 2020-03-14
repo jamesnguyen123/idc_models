@@ -38,7 +38,7 @@ np.random.seed(0)
 tf.compat.v1.enable_v2_behavior()
 warnings.filterwarnings("ignore")
 # make up our client scenario
-NUM_CLIENTS=1
+NUM_CLIENTS=2
 NUM_TRAIN_CLIENTS=(int)(0.8*NUM_CLIENTS)
 NUM_TEST_CLIENTS = NUM_CLIENTS-NUM_TRAIN_CLIENTS
 DATASET_SIZE = 30000
@@ -169,14 +169,12 @@ class Server(object):
             self.model = client_models[0]
             return self.model
         weights = [model.get_weights() for model in client_models]
-        ave_bias = sum([model.get_bias() for model in client_models]).divide(NUM_CLIENTS)
         ave_weights = list()
         for weights_list_tuple in zip(*weights): 
             ave_weights.append(
                 np.array([np.array(w).mean(axis=0) for w in zip(*weights_list_tuple)])
                 )
         self.model.set_weights(ave_weights)
-        self.model.set_bias(ave_bias)
         return self.model
 
 
@@ -238,7 +236,8 @@ def main():
         for i in np.arange(NUM_ROUNDS):
             model_updates = []
             for c in clients:
-                model_updates.append(c.client_fit(epochs))
+                new_model, history = c.client_fit(epochs)
+                model_updates.append(new_model)
                 
             ave_model = server.aggregate(model_updates)
             
