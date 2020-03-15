@@ -128,7 +128,7 @@ class Client(object):
         x.set_weights(arry_weights)    
         return x
     def dec_model(self, x):
-        dec_vector = np.vectorize(self.enc)
+        dec_vector = np.vectorize(self.dec)
         arry_weights = np.array(x.get_weights())
         for i in range(arry_weights.shape[0]):
             arry_weights[i] = np.apply_along_axis(dec_vector,0,arry_weights[i])
