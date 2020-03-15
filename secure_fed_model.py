@@ -50,7 +50,7 @@ CLIENT_TRAIN_SIZE = int(0.8 * CLIENT_SIZE)
 CLIENT_TEST_SIZE = int(0.2 * CLIENT_SIZE)
 
 BATCH_SIZE = 32
-IMG_SHAPE=(50, 50, 3)
+IMG_SHAPE=(10, 10, 3)
 base_learning_rate = 0.001
  
 
@@ -72,9 +72,9 @@ class Timer(object):
     
 weights_shape = [(3, 3, 3, 32),
 (32,),
-(4608, 128),
-(128,),
-(128, 1),
+(128, 8),
+(8,),
+(8, 1),
 (1,)]
 def auroc(y_true, y_pred):
     return tf.compat.v1.py_func(roc_auc_score, (y_true, y_pred), tf.double)
@@ -83,11 +83,11 @@ def create_model():
     model = tf.keras.models.Sequential()
     model.add(tf.keras.layers.Conv2D(32, kernel_size=(3, 3),
                       activation='relu',
-                      input_shape=(50,50,3),strides=2))
+                      input_shape=(10,10,3),strides=2))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
     model.add(tf.keras.layers.Dropout(0.25))
     model.add(tf.keras.layers.Flatten())
-    model.add(tf.keras.layers.Dense(128, activation='relu'))
+    model.add(tf.keras.layers.Dense(8, activation='relu'))
     model.add(tf.keras.layers.Dropout(0.5))
     model.add(tf.keras.layers.Dense(1)) 
     model.compile(optimizer=tf.keras.optimizers.RMSprop(lr=base_learning_rate),
@@ -102,7 +102,6 @@ class Client(object):
         self.public_key, self.private_key = paillier.generate_paillier_keypair()
         self.train = prepare_for_training(data.take(CLIENT_TRAIN_SIZE))
         self.validation = prepare_for_training(data.skip(CLIENT_TRAIN_SIZE).take(CLIENT_TEST_SIZE))
-        print(len(list(data)), len(list(self.train)), len(list(self.validation)))
         self.secure = secure
         self.id = num
         
@@ -116,8 +115,8 @@ class Client(object):
         enc_vector = np.vectorize(self.enc)
         arry_weights = np.array(x.get_weights())
         for i in range(arry_weights.shape[0]):
-            #layer = arry_weights[i]
-            #print(layer.shape)
+            layer = arry_weights[i]
+            print(layer.shape)
             arry_weights[i] = np.apply_along_axis(enc_vector,0,arry_weights[i])
             # print("orig", layer.shape)
             # layer = layer.flatten()
@@ -186,7 +185,7 @@ def get_label(file_path):
 def decode_img(img):
     img = tf.image.decode_png(img, channels=3)
     img = tf.image.convert_image_dtype(img, tf.float32)
-    return tf.image.resize(img, [50, 50])
+    return tf.image.resize(img, [10, 10])
 def process_path(file_path):
     label = get_label(file_path)
     img = tf.io.read_file(file_path)
@@ -228,7 +227,6 @@ def main():
     labeled_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     client_data = labeled_ds.take(TRAIN_SIZE)
     test_data = prepare_for_training(labeled_ds.skip(TRAIN_SIZE).take(TEST_SIZE))
-    print(len(list(client_data)))
     clients = create_clients(client_data, np.arange(NUM_CLIENTS),secure=="secure")
     #clients[0].enc_model(clients[0].model)
     server = Server()
