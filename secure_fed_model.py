@@ -76,6 +76,8 @@ weights_shape = [(3, 3, 3, 32),
 (8,),
 (8, 1),
 (1,)]
+public_key, private_key = paillier.generate_paillier_keypair()
+
 def auroc(y_true, y_pred):
     return tf.compat.v1.py_func(roc_auc_score, (y_true, y_pred), tf.double)
 
@@ -99,41 +101,32 @@ def create_model():
 class Client(object):
     def __init__(self, data, num, secure):
         self.model = create_model()
-        self.public_key, self.private_key = paillier.generate_paillier_keypair()
         self.train = prepare_for_training(data.take(CLIENT_TRAIN_SIZE))
         self.validation = prepare_for_training(data.skip(CLIENT_TRAIN_SIZE).take(CLIENT_TEST_SIZE))
         self.secure = secure
         self.id = num
         
     def enc(self, x):
-        return self.public_key.encrypt((float)(x))
+        return public_key.encrypt((float)(x))
 
     def dec(self, x):
-        return np.float32((self.private_key.decrypt(x)))
+        return np.float32((private_key.decrypt(x)))
         
     def enc_model(self, x):
         enc_vector = np.vectorize(self.enc)
-        arry_weights = np.array(x.get_weights())
+        arry_weights = np.array(x)
         for i in range(arry_weights.shape[0]):
-            layer = arry_weights[i]
-            print(layer.shape)
             arry_weights[i] = np.apply_along_axis(enc_vector,0,arry_weights[i])
-            # print("orig", layer.shape)
-            # layer = layer.flatten()
-            # print("flatten ", layer.shape)
-            # layer = enc_vector(layer)
-            # layer = layer.reshape(weights_shape[i])
-            # print("reshape ", layer.shape)
-            # arry_weights[i] = layer
-        x.set_weights(arry_weights)    
-        return x
+        #x.set_weights(arry_weights)    
+        return arry_weights
+    
     def dec_model(self, x):
         dec_vector = np.vectorize(self.dec)
-        arry_weights = np.array(x.get_weights())
+        arry_weights = np.array(x)
         for i in range(arry_weights.shape[0]):
             arry_weights[i] = np.apply_along_axis(dec_vector,0,arry_weights[i])
-        x.set_weights(arry_weights)    
-        return x
+        #x.set_weights(arry_weights)    
+        return arry_weights
     
     def client_fit(self, epochs=10):
         with Timer("Training for client " + str(self.id)):
@@ -142,18 +135,19 @@ class Client(object):
                                 validation_data=self.validation)
         if self.secure:
             with Timer("Encryption for client " + str(self.id)):
-                self.enc_model(self.model)    
-        return self.model, history    
+                weights = self.enc_model(self.model.get_weights())    
+                return weights, history    
+        else:
+            return self.model.get_weights()
     
-    def client_update(self, model):
-        if NUM_CLIENTS==1:
-            return
-        
+    def client_update(self, weights):
         if self.secure:
             with Timer("Decryption for client " + str(self.id)):
-                self.model = self.dec_model(model)
+                new_weights = self.dec_model(weights)
+            self.model.set_weights(new_weights)
         else:
-            self.model = model
+            self.model.set_weights(new_weights)
+
          
     def evaluate(self, test_batches):
         loss,accuracy,auc = self.model.evaluate(test_batches, steps = 20)
@@ -163,18 +157,15 @@ class Server(object):
     def __init__(self):
         self.model = create_model()
         
-    def aggregate(self, client_models):
+    def aggregate(self, client_weights):
         if NUM_CLIENTS==1:
-            self.model = client_models[0]
-            return self.model
-        weights = [model.get_weights() for model in client_models]
+            return client_weights[0]
         ave_weights = list()
-        for weights_list_tuple in zip(*weights): 
+        for weights_list_tuple in zip(*client_weights): 
             ave_weights.append(
                 np.array([np.array(w).mean(axis=0) for w in zip(*weights_list_tuple)])
                 )
-        self.model.set_weights(ave_weights)
-        return self.model
+        return ave_weights
 
 
         
@@ -228,19 +219,18 @@ def main():
     client_data = labeled_ds.take(TRAIN_SIZE)
     test_data = prepare_for_training(labeled_ds.skip(TRAIN_SIZE).take(TEST_SIZE))
     clients = create_clients(client_data, np.arange(NUM_CLIENTS),secure=="secure")
-    #clients[0].enc_model(clients[0].model)
     server = Server()
     with Timer("Secure fed model"):
         for i in np.arange(NUM_ROUNDS):
-            model_updates = []
+            weight_updates = []
             for c in clients:
-                new_model, history = c.client_fit(epochs)
-                model_updates.append(new_model)
+                weights, history = c.client_fit(epochs)
+                weight_updates.append(weights)
                 
-            ave_model = server.aggregate(model_updates)
+            ave_weights = server.aggregate(weight_updates)
             
             for c in clients:
-                c.client_update(ave_model)
+                c.client_update(ave_weights)
             
             loss,acc,auc = clients[0].evaluate(test_data)
             print(loss,acc,auc)
