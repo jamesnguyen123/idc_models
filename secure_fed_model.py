@@ -99,12 +99,12 @@ def create_model():
 
 
 class Client(object):
-    def __init__(self, data, num, secure):
+    def __init__(self, data, num, p):
         self.model = create_model()
         self.train = prepare_for_training(data.take(CLIENT_TRAIN_SIZE))
         self.validation = prepare_for_training(data.skip(CLIENT_TRAIN_SIZE).take(CLIENT_TEST_SIZE))
-        self.secure = secure
         self.id = num
+        self.percent=p
         
     def enc(self, x):
         return public_key.encrypt((float)(x))
@@ -115,7 +115,7 @@ class Client(object):
     def enc_model(self, x):
         enc_vector = np.vectorize(self.enc)
         arry_weights = np.array(x)
-        for i in range(arry_weights.shape[0]):
+        for i in range((int)(arry_weights.shape[0]*self.percent)):
             arry_weights[i] = np.apply_along_axis(enc_vector,0,arry_weights[i])
         #x.set_weights(arry_weights)    
         return arry_weights
@@ -123,7 +123,7 @@ class Client(object):
     def dec_model(self, x):
         dec_vector = np.vectorize(self.dec)
         arry_weights = np.array(x)
-        for i in range(arry_weights.shape[0]):
+        for i in range((int)(arry_weights.shape[0]*self.percent)):
             arry_weights[i] = np.apply_along_axis(dec_vector,0,arry_weights[i])
         #x.set_weights(arry_weights)    
         return arry_weights
@@ -133,20 +133,20 @@ class Client(object):
             history = self.model.fit(self.train,
                                 epochs=epochs,
                                 validation_data=self.validation)
-        if self.secure:
+        if self.percent > 0:
             with Timer("Encryption for client " + str(self.id)):
                 weights = self.enc_model(self.model.get_weights())    
                 return weights, history    
         else:
-            return self.model.get_weights()
+            return self.model.get_weights(), history
     
     def client_update(self, weights):
-        if self.secure:
+        if self.percent > 0:
             with Timer("Decryption for client " + str(self.id)):
                 new_weights = self.dec_model(weights)
             self.model.set_weights(new_weights)
         else:
-            self.model.set_weights(new_weights)
+            self.model.set_weights(weights)
 
          
     def evaluate(self, test_batches):
@@ -203,22 +203,22 @@ def prepare_for_training(ds, cache=True, shuffle_buffer_size=1000):
 
     return ds
 
-def create_clients(all_data, client_ids,secure):
+def create_clients(all_data, client_ids,percent):
   clients=[]
   for i in client_ids:
-      clients.append(Client(all_data.shard(NUM_CLIENTS,i),i,secure))
+      clients.append(Client(all_data.shard(NUM_CLIENTS,i),i, percent))
   return clients    
     
 def main():
     path_data = sys.argv[1]
     NUM_ROUNDS=(int)(sys.argv[2])
-    secure = sys.argv[3]
     epochs=5
+    percent = (float)(sys.argv[3])
     list_ds = tf.data.Dataset.list_files(path_data + '/data/balanced_IDC_30k/*/*', shuffle=True)  
     labeled_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     client_data = labeled_ds.take(TRAIN_SIZE)
     test_data = prepare_for_training(labeled_ds.skip(TRAIN_SIZE).take(TEST_SIZE))
-    clients = create_clients(client_data, np.arange(NUM_CLIENTS),secure=="secure")
+    clients = create_clients(client_data, np.arange(NUM_CLIENTS), percent)
     server = Server()
     with Timer("Secure fed model"):
         for i in np.arange(NUM_ROUNDS):
